@@ -3,7 +3,7 @@ import json
 import os
 import httpx
 import threading
-import asyncio  # <-- MUDANÇA: Importar a biblioteca asyncio
+import asyncio
 from flask import Flask
 from dotenv import load_dotenv
 from telegram import Update
@@ -14,27 +14,20 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     raise ValueError("Erro: O TELEGRAM_TOKEN não foi encontrado no arquivo .env")
-
-# Lógica para usar o disco persistente do Render
 DATA_DIR = os.environ.get('RENDER_DATA_DIR', '.')
 NOME_ARQUIVO_DADOS = os.path.join(DATA_DIR, "data_bot.json")
-
 dados = {}
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-# Criação do servidor Flask para responder aos Health Checks do Render
 server = Flask(__name__)
 
 @server.route('/')
 def health_check():
-    """Endpoint que o Render usará para verificar se o serviço está vivo."""
     return "Bot de Xadrez está vivo!", 200
 
-
-# --- FUNÇÕES DE PERSISTÊNCIA ---
+# --- FUNÇÕES DE PERSISTÊNCIA (sem alterações) ---
 def salvar_dados():
     with open(NOME_ARQUIVO_DADOS, 'w') as f:
         dados_para_salvar = dados.copy()
@@ -59,8 +52,7 @@ def carregar_dados():
         salvar_dados()
         logger.info(f"Nenhum arquivo de dados encontrado. Um novo ('{NOME_ARQUIVO_DADOS}') foi criado.")
 
-
-# --- LÓGICA DE VERIFICAÇÃO (ASSÍNCRONA) ---
+# --- LÓGICA DE VERIFICAÇÃO (sem alterações) ---
 async def verificar_partidas(context: CallbackContext):
     chat_id = dados.get('chat_id')
     if not chat_id:
@@ -97,8 +89,7 @@ async def verificar_partidas(context: CallbackContext):
             except Exception as e:
                 logger.error(f"Erro ao verificar {gm_username}: {e}", exc_info=False)
 
-
-# --- COMANDOS DO TELEGRAM (ASSÍNCRONOS) ---
+# --- COMANDOS DO TELEGRAM (sem alterações) ---
 async def start(update: Update, context: CallbackContext):
     dados['chat_id'] = update.effective_chat.id
     salvar_dados()
@@ -210,19 +201,14 @@ async def filtro_ritmo(update: Update, context: CallbackContext):
             await update.message.reply_text(f"Nenhum ritmo válido encontrado.")
 
 
-# --- LÓGICA DE INICIALIZAÇÃO ---
+# --- LÓGICA DE INICIALIZAÇÃO (INVERTIDA) ---
 
 def run_telegram_bot():
-    """Esta função contém toda a lógica para configurar e rodar o bot do Telegram."""
-    
-    ### MUDANÇA: Criar e definir um novo event loop para esta thread ###
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
+    """Esta função contém a lógica principal do bot e deve rodar na thread principal."""
+    # A criação do event loop para a thread não é mais necessária aqui
     carregar_dados()
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Registra todos os Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("ajuda", ajuda))
     application.add_handler(CommandHandler("verificar", verificar_agora))
@@ -242,16 +228,21 @@ def run_telegram_bot():
         name="verificar_partidas"
     )
     
-    logger.info("Bot do Telegram iniciado e tarefa de verificação agendada.")
+    logger.info("Bot do Telegram pronto para iniciar na thread principal.")
     application.run_polling()
 
-if __name__ == '__main__':
-    # Inicia o bot do Telegram em uma thread separada
-    logger.info("Iniciando o bot em uma thread separada...")
-    bot_thread = threading.Thread(target=run_telegram_bot)
-    bot_thread.start()
-    
-    # Inicia o servidor web na thread principal para responder aos health checks
+def run_flask_server():
+    """Esta função roda o servidor web Flask e é segura para rodar em uma thread secundária."""
     logger.info("Iniciando o servidor web para health checks...")
     port = int(os.environ.get("PORT", 8080))
     server.run(host="0.0.0.0", port=port)
+
+if __name__ == '__main__':
+    # Inicia o servidor web em uma thread secundária
+    server_thread = threading.Thread(target=run_flask_server)
+    server_thread.daemon = True  # Permite que a thread principal encerre o programa
+    server_thread.start()
+
+    # Inicia o bot do Telegram na thread principal
+    logger.info("Iniciando o bot do Telegram na thread principal...")
+    run_telegram_bot()

@@ -1,0 +1,9 @@
+# Ignorar arquivos de ambiente com segredos
+.env
+
+# Ignorar arquivo de dados do bot (contém chat_id e outras infos)
+data_bot.json
+
+# Ignorar arquivos de cache e sistema do Python
+__pycache__/
+*.pyc
